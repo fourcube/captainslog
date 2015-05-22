@@ -1,6 +1,6 @@
 # captainslog
 
-Remember what you have done the last day.
+Remember what you have done through a simple text log.
 
 ## Installation
 
