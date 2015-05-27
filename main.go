@@ -7,13 +7,21 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
+	"text/template"
 	"time"
 )
 
 const FileTemplate = `
 ## END ##
 #########
+{{ range . }}
+# Date {{ .Time }}
+# ===================================
+{{ range .Lines }}{{ if . }}# {{ . }}
+{{ end }}{{end}}
+{{ end }}
 `
 
 const TimeLayout = "Jan 2, 2006 at 3:04pm (MST)"
@@ -26,7 +34,7 @@ func main() {
 	tempLogFile := createTempFile()
 	defer tempLogFile.Close()
 
-	writeHeader(tempLogFile)
+	writeHeader(tempLogFile, logpath)
 	startEditor(editor, tempLogFile.Name())
 
 	text := getText(tempLogFile)
@@ -113,8 +121,45 @@ func startEditor(editor, tempLogFilePath string) {
 	cmd.Run()
 }
 
-func writeHeader(tempLogFile *os.File) {
-	_, err := tempLogFile.WriteString(FileTemplate)
+type sortableLogEntries []LogEntry
+
+func (l sortableLogEntries) Len() int {
+	return len(l)
+}
+
+func (l sortableLogEntries) Less(i, j int) bool {
+	return l[i].Before(l[j].Time)
+}
+
+func (l sortableLogEntries) Swap(i, j int) {
+	l[j], l[i] = l[i], l[j]
+}
+
+func writeHeader(tempLogFile *os.File, logpath string) {
+	logs, err := ioutil.ReadFile(logpath)
+	var res sortableLogEntries
+
+	if err != nil {
+		res = make(sortableLogEntries, 0)
+	} else {
+		res = sortableLogEntries(Parse(string(logs)))
+		sort.Sort(sort.Reverse(res))
+	}
+
+	previewCount := 5
+	if len(res) < 5 {
+		previewCount = len(res)
+	}
+
+	data := res[:previewCount]
+
+	t := template.New("Header")
+	t, err = t.Parse(FileTemplate)
+	if err != nil {
+		log.Fatalf("Couldn't parse template %s, %v", FileTemplate, err)
+	}
+
+	err = t.ExecuteTemplate(tempLogFile, "Header", data)
 	if err != nil {
 		panic("Couldn't write header to temporary log file.")
 	}
